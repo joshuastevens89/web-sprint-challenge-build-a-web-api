@@ -1,120 +1,81 @@
-// Write your "projects" router here!
-const express = require('express');
-
-const Projects = require('./projects-model');
+const express = require("express");
+const Project = require("./projects-model");
+const { validateProjectId, validateProject } = require("./projects-middleware");
 
 const router = express.Router();
 
-const validateProjectId = async (req, res, next) => {
-    try {
-        const project = await Projects.get(req.params.id);
-        if (!project) {
-            return res.status(404).json({ message: 'Project not found'});
-        }
-        req.project = project;
-        next();
-    } catch (err) {
-        next (err);
+router.get("/", async (req, res) => {
+  try {
+    const project = await Project.get();
+    if (!project) {
+      res.status(200).json([]);
+    } else {
+      res.status(200).json(project);
     }
-};
-
-const validateProjectBody = (req, res, next) => {
-    const { name, description } = req.body;
-    if (!name || !description) {
-        return res.status(400).json({ message: 'Missing required fields'});
-    }
-    next();
-};
-
-router.get('/', async (req, res, next) => {
-    try{
-        const projects = await Projects.get();
-        res.json(projects);
-    } catch (err) {
-        next(err);
-    }
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: error.message });
+  }
 });
 
-router.get('/:id', validateProjectId, (req, res) => {
-    res.json(req.project);
+router.get("/:id", validateProjectId, async (req, res) => {
+  res.json(req.project);
 });
 
-router.post('/', validateProjectBody, async (req, res, next) => {
-    try {
-        const newProject = await Projects.insert(req.body);
-        res.status(201).json(newProject);
-    } catch (err) {
-        next(err);
-    }
-});
-
-router.post('/api/projects', async (req, res) => {
-    const { name, description } = req.body;
-  
-    if (!name || !description) {
-      return res.status(400).json({ message: 'Name and description are required.' });
-    }
-  
-    try {
-      const [id] = await db('projects').insert({ name, description });
-      const newProject = await db('projects').where({ id }).first();
-      res.status(201).json(newProject);
-    } catch (error) {
-      res.status(500).json({ message: 'Failed to create project.' });
-    }
-  });
-  
-
-router.put('/:id', validateProjectId, validateProjectBody, async (req, res, next) => {
-    try {
-        const updatedProject = await Projects.update(req.params.id, req.body);
-        res.json(updatedProject);
-
-    } catch (err) {
-        next(err);
-    }
-});
-
-router.put('/api/projects/:id', async (req, res) => {
-    const { id } = req.params;
+router.post("/", async (req, res) => {
+  try {
     const { name, description, completed } = req.body;
-  
-    if (!name || !description || typeof completed !== 'boolean') {
-      return res.status(400).json({
-        message: 'Name, description, and completed status are required.',
+    if (!name) {
+      res.status(400).json({
+        message: "Please provide a name for the project",
       });
+    } else if (!description) {
+      res.status(400).json({
+        message: "Please provide a description for the project",
+      });
+    } else {
+      const createdProject = await Project.insert({
+        name,
+        description,
+        ...(completed && { completed }),
+      });
+      res.status(201).json(createdProject);
     }
-  
-    try {
-      const updated = await db('projects').where({ id }).update({ name, description, completed });
-      if (updated) {
-        const updatedProject = await db('projects').where({ id }).first();
-        res.status(200).json(updatedProject);
-      } else {
-        res.status(404).json({ message: 'Project not found.' });
-      }
-    } catch (error) {
-      res.status(500).json({ message: 'Failed to update project.' });
-    }
-  });
-  
-
-router.delete('/:id', validateProjectId, async (req, res, next) => {
-    try {
-        await Projects.remove(req.params.id);
-        res.status(204).end();
-    } catch (err) {
-        next(err);
-    }
+  } catch (error) {
+    console.error("Error creating project:", error);
+    res.status(500).json({
+      message: "There was an error while saving the project to the database",
+    });
+  }
 });
 
-router.get('/:id/actions', validateProjectId, async (req, res, next) => {
-    try {
-        const actions = await Projects.getProjectActions(req.params.id);
-        res.json(actions);
-    } catch (err) {
-        next(err);
+router.put("/:id", validateProjectId, validateProject, (req, res, next) => {
+  const { name, description, completed } = req.body;
+  Project.update(req.params.id, { name, description, completed })
+    .then((updatedProject) => res.json(updatedProject))
+    .catch(next);
+});
+
+router.delete("/:id", validateProjectId, async (req, res, next) => {
+  try {
+    await Project.remove(req.params.id);
+    res.json(req.project);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/:id/actions", validateProjectId, async (req, res, next) => {
+  try {
+    const projectActions = await Project.getProjectActions(req.params.id);
+    if (!projectActions) {
+      res.json([]);
+    } else {
+      res.json(projectActions);
     }
+  } catch (error) {
+    next(error);
+  }
 });
 
 module.exports = router;
